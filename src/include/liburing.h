@@ -939,6 +939,14 @@ IOURINGINLINE void io_uring_prep_name_to_handle_at(struct io_uring_sqe *sqe, int
 	sqe->open_flags = (__u32) flags;
 }
 
+IOURINGINLINE void io_uring_prep_open_by_handle_at(struct io_uring_sqe *sqe, int mount_fd,
+						   struct file_handle *handle, int flags)
+	LIBURING_NOEXCEPT
+{
+	io_uring_prep_rw(IORING_OP_OPEN_BY_HANDLE_AT, sqe, mount_fd, handle, 0, 0);
+	sqe->open_flags = (__u32) flags;
+}
+
 /* open directly into the fixed file table */
 IOURINGINLINE void io_uring_prep_openat_direct(struct io_uring_sqe *sqe,
 					       int dfd, const char *path,
@@ -947,6 +955,19 @@ IOURINGINLINE void io_uring_prep_openat_direct(struct io_uring_sqe *sqe,
 	LIBURING_NOEXCEPT
 {
 	io_uring_prep_openat(sqe, dfd, path, flags, mode);
+	/* offset by 1 for allocation */
+	if (file_index == IORING_FILE_INDEX_ALLOC)
+		file_index--;
+	__io_uring_set_target_fixed_file(sqe, file_index);
+}
+
+IOURINGINLINE void io_uring_prep_open_by_handle_at_direct(struct io_uring_sqe *sqe,
+							  int mount_fd, struct file_handle *handle,
+							  int flags,
+							  unsigned file_index)
+	LIBURING_NOEXCEPT
+{
+	io_uring_prep_open_by_handle_at(sqe, mount_fd, handle, flags);
 	/* offset by 1 for allocation */
 	if (file_index == IORING_FILE_INDEX_ALLOC)
 		file_index--;
