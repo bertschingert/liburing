@@ -153,6 +153,7 @@ test_srcs := \
 	open-close.c \
 	open-direct-link.c \
 	open-direct-pick.c \
+	open_by_handle_at.c \
 	personality.c \
 	pipe.c \
 	pipe-bug.c \
