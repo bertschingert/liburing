@@ -930,6 +930,15 @@ IOURINGINLINE void io_uring_prep_openat(struct io_uring_sqe *sqe, int dfd,
 	sqe->open_flags = (__u32) flags;
 }
 
+IOURINGINLINE void io_uring_prep_name_to_handle_at(struct io_uring_sqe *sqe, int dfd, const char *path,
+						   struct file_handle *handle, void *mount_id, int flags)
+	LIBURING_NOEXCEPT
+{
+	io_uring_prep_rw(IORING_OP_NAME_TO_HANDLE_AT, sqe, dfd, path, 0, (unsigned long) handle);
+	sqe->addr3 = (unsigned long) mount_id;
+	sqe->open_flags = (__u32) flags;
+}
+
 /* open directly into the fixed file table */
 IOURINGINLINE void io_uring_prep_openat_direct(struct io_uring_sqe *sqe,
 					       int dfd, const char *path,
