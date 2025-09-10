@@ -3,6 +3,7 @@
  * Description: run various {name_to,open_by}_handle_at(2) tests
  *
  */
+
 #include <assert.h>
 #include <fcntl.h>
 #include <pthread.h>
@@ -195,8 +196,6 @@ static void test_errors_open_by_handle_at(struct io_uring *ring, struct file_han
 	io_uring_prep_open_by_handle_at(sqe, STDOUT_FILENO, handle, 0);
 	submit_and_wait_one(ring, &cqe);
 	assert(cqe->res == -ESTALE);
-
-	free(handle);
 }
 
 static void test_symlink(struct io_uring *ring)
@@ -380,6 +379,77 @@ void stress_test(struct io_uring *ring)
 	}
 }
 
+static int do_open_by_handle_at(struct io_uring *ring, int mount_fd,
+			struct file_handle *handle, int flags)
+{
+	struct io_uring_sqe *sqe;
+	struct io_uring_cqe *cqe = NULL;
+
+	sqe = get_sqe(ring);
+	io_uring_prep_open_by_handle_at(sqe, mount_fd, handle, flags);
+	submit_and_wait_one(ring, &cqe);
+	return cqe->res;
+}
+
+/* Since I can't count on this being defined: */
+#define _O_LARGEFILE 0x8000
+
+int test_flags(struct io_uring *ring, struct file_handle *handle)
+{
+	int flags;
+	int ret = 0;
+	int fd;
+
+	/* Invalid flags: */
+	fd = do_open_by_handle_at(ring, TMP_FD, handle, O_CREAT|O_DIRECTORY);
+	assert(fd == -EINVAL);
+
+	/* No flags: */
+	fd = do_open_by_handle_at(ring, TMP_FD, handle, 0);
+	assert(fd >= 0);
+	flags = fcntl(fd, F_GETFD);
+	assert(flags == 0);
+	flags = fcntl(fd, F_GETFL);
+	assert(flags >= 0);
+	flags &= ~_O_LARGEFILE; /* io_uring might set this, so mask it out */
+	if (flags != 0){
+		fprintf(stderr, "No flags: expected 0, got 0x%x for flags\n", flags);
+		ret = 1;
+	}
+	
+	/* O_CLOEXEC: */
+	fd = do_open_by_handle_at(ring, TMP_FD, handle, O_CLOEXEC);
+	assert(fd >= 0);
+	flags = fcntl(fd, F_GETFD);
+	assert(flags >= 0);
+	if (flags != FD_CLOEXEC) {
+		fprintf(stderr, "O_CLOEXEC: expected FD_CLOEXEC, got 0x%x for FD flags\n", flags);
+		ret = 1;
+	}
+	flags = fcntl(fd, F_GETFL);
+	flags &= ~_O_LARGEFILE; /* io_uring might set this, so mask it out */
+	assert(flags >= 0);
+	if (flags != 0) {
+		fprintf(stderr, "O_CLOEXEC: expected 0, got 0x%x for file flags\n", flags);
+		ret = 1;
+	}
+
+	/* O_NONBLOCK */
+	fd = do_open_by_handle_at(ring, TMP_FD, handle, O_NONBLOCK);
+	assert(fd >= 0);
+	flags = fcntl(fd, F_GETFD);
+	assert(flags == 0);
+	flags = fcntl(fd, F_GETFL);
+	flags &= ~_O_LARGEFILE; /* io_uring might set this, so mask it out */
+	assert(flags >= 0);
+	if (flags != O_NONBLOCK) {
+		fprintf(stderr, "O_NONBLOCK: expected O_NONBLOCK, got 0x%x for file flags\n", flags);
+		ret = 1;
+	}
+
+	return ret;
+}
+
 int main(int argc, char *argv[])
 {
 	struct io_uring ring;
@@ -410,8 +480,12 @@ int main(int argc, char *argv[])
 
 	stress_test(&ring);
 
+	ret = test_flags(&ring, handle);
+	assert(ret == 0);
+
 	io_uring_queue_exit(&ring);
 	close(TMP_FD);
+	free(handle);
 
 	return 0;
 }
